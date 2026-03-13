@@ -78,13 +78,27 @@ def add_zone_columns(
     cfg: StorageConfig = DEFAULT_STORAGE,
 ) -> pl.DataFrame | pl.LazyFrame:
     """Add player and ball zones as clustering-friendly columns."""
-    return (
-        frame.with_columns([
-            assign_zone("player_x", "player_y", cfg).alias(cfg.pitch_zone_column),
-            assign_ball_zone(cfg),
-        ])
-        .with_columns([
-            flip_zones_for_away(cfg.pitch_zone_column).alias(cfg.pitch_zone_column),
-            flip_zones_for_away(cfg.ball_zone_column).alias(cfg.ball_zone_column),
-        ])
-    )
+    zone_expressions: list[pl.Expr] = []
+    if cfg.derived_columns.pitch_zone:
+        zone_expressions.append(
+            assign_zone("player_x", "player_y", cfg).alias(cfg.pitch_zone_column)
+        )
+    if cfg.derived_columns.ball_zone:
+        zone_expressions.append(assign_ball_zone(cfg))
+    if not zone_expressions:
+        return frame
+
+    frame = frame.with_columns(zone_expressions)
+
+    flip_expressions: list[pl.Expr] = []
+    if cfg.derived_columns.pitch_zone:
+        flip_expressions.append(
+            flip_zones_for_away(cfg.pitch_zone_column).alias(cfg.pitch_zone_column)
+        )
+    if cfg.derived_columns.ball_zone:
+        flip_expressions.append(
+            flip_zones_for_away(cfg.ball_zone_column).alias(cfg.ball_zone_column)
+        )
+    if not flip_expressions:
+        return frame
+    return frame.with_columns(flip_expressions)

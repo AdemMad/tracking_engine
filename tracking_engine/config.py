@@ -46,6 +46,18 @@ class EventPatternConfig:
 
 
 @dataclass(frozen=True)
+class DerivedColumnConfig:
+    pitch_zone: bool = True
+    ball_zone: bool = True
+    frame_bucket: bool = True
+    min_split: bool = True
+    player_ball_distance: bool = True
+    has_ball_possession: bool = True
+    player_speed_band: bool = True
+    event_type: bool = True
+
+
+@dataclass(frozen=True)
 class StorageConfig:
     """
     Warehouse-oriented configuration.
@@ -71,6 +83,7 @@ class StorageConfig:
     zone: ZoneConfig = field(default_factory=ZoneConfig)
     speed_band: SpeedBandConfig = field(default_factory=SpeedBandConfig)
     event_pattern: EventPatternConfig = field(default_factory=EventPatternConfig)
+    derived_columns: DerivedColumnConfig = field(default_factory=DerivedColumnConfig)
 
     @property
     def pitch_zone_column(self) -> str:
@@ -106,27 +119,26 @@ class StorageConfig:
 
     @property
     def warehouse_sort_columns(self) -> tuple[str, ...]:
-        return (
-            "opta_match_id",
-            "period",
-            "team",
-            "frame_bucket",
-            self.pitch_zone_column,
-            self.ball_zone_column,
-            "frame_id",
-            "player_id",
-        )
+        columns = ["opta_match_id", "period", "team"]
+        if self.derived_columns.frame_bucket:
+            columns.append("frame_bucket")
+        if self.derived_columns.pitch_zone:
+            columns.append(self.pitch_zone_column)
+        if self.derived_columns.ball_zone:
+            columns.append(self.ball_zone_column)
+        columns.extend(["frame_id", "player_id"])
+        return tuple(columns)
 
     @property
     def databricks_liquid_cluster_columns(self) -> tuple[str, ...]:
-        return (
-            "opta_match_id",
-            "period",
-            "team",
-            "frame_bucket",
-            self.pitch_zone_column,
-            self.ball_zone_column,
-        )
+        columns = ["opta_match_id", "period", "team"]
+        if self.derived_columns.frame_bucket:
+            columns.append("frame_bucket")
+        if self.derived_columns.pitch_zone:
+            columns.append(self.pitch_zone_column)
+        if self.derived_columns.ball_zone:
+            columns.append(self.ball_zone_column)
+        return tuple(columns)
 
     @property
     def snowflake_cluster_columns(self) -> tuple[str, ...]:
@@ -134,13 +146,12 @@ class StorageConfig:
 
     @property
     def normalized_output_columns(self) -> tuple[str, ...]:
-        return (
+        columns: list[str] = [
             "opta_match_id",
             "team",
             "period",
             "frame_id",
             "game_clock",
-            "min_split",
             "wall_clock",
             "live",
             "last_touch",
@@ -151,24 +162,34 @@ class StorageConfig:
             "player_y",
             "player_z",
             "player_speed",
-            self.player_speed_band_column,
             "ball_x",
             "ball_y",
             "ball_z",
             "ball_speed",
             "pitch_length",
             "pitch_width",
-            self.pitch_zone_column,
-            self.ball_zone_column,
-            "frame_bucket",
-            self.player_ball_distance_column,
-            self.has_ball_possession_column,
-            self.event_type_column,
-        )
+        ]
+        if self.derived_columns.min_split:
+            columns.insert(5, "min_split")
+        if self.derived_columns.player_speed_band:
+            columns.insert(columns.index("ball_x"), self.player_speed_band_column)
+        if self.derived_columns.pitch_zone:
+            columns.append(self.pitch_zone_column)
+        if self.derived_columns.ball_zone:
+            columns.append(self.ball_zone_column)
+        if self.derived_columns.frame_bucket:
+            columns.append("frame_bucket")
+        if self.derived_columns.player_ball_distance:
+            columns.append(self.player_ball_distance_column)
+        if self.derived_columns.has_ball_possession:
+            columns.append(self.has_ball_possession_column)
+        if self.derived_columns.event_type:
+            columns.append(self.event_type_column)
+        return tuple(columns)
 
     @property
     def denormalized_output_columns(self) -> tuple[str, ...]:
-        return (
+        columns: list[str] = [
             "opta_match_id",
             "fixture",
             "match_date",
@@ -176,7 +197,6 @@ class StorageConfig:
             "period",
             "frame_id",
             "game_clock",
-            "min_split",
             "wall_clock",
             "live",
             "last_touch",
@@ -189,20 +209,30 @@ class StorageConfig:
             "player_y",
             "player_z",
             "player_speed",
-            self.player_speed_band_column,
             "ball_x",
             "ball_y",
             "ball_z",
             "ball_speed",
             "pitch_length",
             "pitch_width",
-            self.pitch_zone_column,
-            self.ball_zone_column,
-            "frame_bucket",
-            self.player_ball_distance_column,
-            self.has_ball_possession_column,
-            self.event_type_column,
-        )
+        ]
+        if self.derived_columns.min_split:
+            columns.insert(7, "min_split")
+        if self.derived_columns.player_speed_band:
+            columns.insert(columns.index("ball_x"), self.player_speed_band_column)
+        if self.derived_columns.pitch_zone:
+            columns.append(self.pitch_zone_column)
+        if self.derived_columns.ball_zone:
+            columns.append(self.ball_zone_column)
+        if self.derived_columns.frame_bucket:
+            columns.append("frame_bucket")
+        if self.derived_columns.player_ball_distance:
+            columns.append(self.player_ball_distance_column)
+        if self.derived_columns.has_ball_possession:
+            columns.append(self.has_ball_possession_column)
+        if self.derived_columns.event_type:
+            columns.append(self.event_type_column)
+        return tuple(columns)
 
 
 DEFAULT_STORAGE = StorageConfig()
@@ -255,6 +285,15 @@ def load_runtime_storage_config(
         jogging_max_m_s: 4.0
         running_max_m_s: 5.5
         high_speed_running_max_m_s: 7.0
+      derived_columns:
+        pitch_zone: true
+        ball_zone: true
+        frame_bucket: true
+        min_split: true
+        player_ball_distance: true
+        has_ball_possession: true
+        player_speed_band: true
+        event_type: false
       patterns:
         column_name: event_type
         closest_frame: 0.85
@@ -295,6 +334,7 @@ def load_runtime_storage_config(
     ball_possession = dict(settings.get("ball_possession") or {})
     player_ball_distance = dict(settings.get("player_ball_distance") or {})
     speed_bands = dict(settings.get("speed_bands") or {})
+    derived_columns = _lookup_mapping(settings, "derived_columns", "process_columns")
     event_pattern_cfg = _load_event_pattern_config(settings, base.event_pattern)
 
     zone_cfg = replace(
@@ -336,6 +376,41 @@ def load_runtime_storage_config(
             )
         ),
     )
+    derived_column_cfg = replace(
+        base.derived_columns,
+        pitch_zone=_coerce_bool(
+            derived_columns.get("pitch_zone"),
+            base.derived_columns.pitch_zone,
+        ),
+        ball_zone=_coerce_bool(
+            derived_columns.get("ball_zone"),
+            base.derived_columns.ball_zone,
+        ),
+        frame_bucket=_coerce_bool(
+            derived_columns.get("frame_bucket"),
+            base.derived_columns.frame_bucket,
+        ),
+        min_split=_coerce_bool(
+            derived_columns.get("min_split"),
+            base.derived_columns.min_split,
+        ),
+        player_ball_distance=_coerce_bool(
+            derived_columns.get("player_ball_distance"),
+            base.derived_columns.player_ball_distance,
+        ),
+        has_ball_possession=_coerce_bool(
+            derived_columns.get("has_ball_possession"),
+            base.derived_columns.has_ball_possession,
+        ),
+        player_speed_band=_coerce_bool(
+            derived_columns.get("player_speed_band"),
+            base.derived_columns.player_speed_band,
+        ),
+        event_type=_coerce_bool(
+            derived_columns.get("event_type"),
+            base.derived_columns.event_type,
+        ),
+    )
 
     return replace(
         base,
@@ -365,13 +440,14 @@ def load_runtime_storage_config(
         length=float(pitch_defaults.get("length_m", base.length)),
         width=float(pitch_defaults.get("width_m", base.width)),
         default_model=str(settings.get("model", base.default_model)),
-        default_save=bool(settings.get("save", base.default_save)),
+        default_save=_coerce_bool(settings.get("save"), base.default_save),
         default_output_name=str(
             settings.get("output_name", base.default_output_name)
         ),
         zone=zone_cfg,
         speed_band=speed_band_cfg,
         event_pattern=event_pattern_cfg,
+        derived_columns=derived_column_cfg,
     )
 
 
@@ -388,6 +464,22 @@ def _lookup_mapping(mapping: dict[str, Any], *names: str) -> dict[str, Any]:
     if isinstance(value, dict):
         return dict(value)
     return {}
+
+
+def _coerce_bool(value: Any, default: bool) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        normalized = value.strip().casefold()
+        if normalized in {"true", "yes", "y", "on", "1"}:
+            return True
+        if normalized in {"false", "no", "n", "off", "0"}:
+            return False
+    return bool(value)
 
 
 def _load_event_pattern_config(

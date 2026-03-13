@@ -52,6 +52,15 @@ def _write_config(base_dir: Path) -> tuple[Path, Path, Path]:
             "    jogging_max_m_s: 4.0",
             "    running_max_m_s: 5.5",
             "    high_speed_running_max_m_s: 7.0",
+            "  derived_columns:",
+            "    pitch_zone: true",
+            "    ball_zone: true",
+            "    frame_bucket: true",
+            "    min_split: true",
+            "    player_ball_distance: true",
+            "    has_ball_possession: true",
+            "    player_speed_band: true",
+            "    event_type: true",
             "  patterns:",
             "    column_name: event_type",
             "    closest_frame: 0.2",
@@ -443,6 +452,71 @@ def test_pipeline_uses_configurable_helper_column_names_from_yaml(tmp_path: Path
         {"team": "home", "frame_id": 0, "is_in_possession": True},
         {"team": "home", "frame_id": 1, "is_in_possession": True},
     ]
+
+
+def test_pipeline_can_disable_derived_columns_for_performance_management(tmp_path: Path) -> None:
+    config_path, tracking_dir, metadata_dir = _write_config(tmp_path)
+    config_path.write_text(
+        config_path.read_text(encoding="utf-8")
+        .replace("    pitch_zone: true", "    pitch_zone: false")
+        .replace("    ball_zone: true", "    ball_zone: false")
+        .replace("    frame_bucket: true", "    frame_bucket: false")
+        .replace("    min_split: true", "    min_split: false")
+        .replace("    player_ball_distance: true", "    player_ball_distance: false")
+        .replace("    has_ball_possession: true", "    has_ball_possession: false")
+        .replace("    player_speed_band: true", "    player_speed_band: false")
+        .replace("    event_type: true", "    event_type: 'false'"),
+        encoding="utf-8",
+    )
+    _write_tracking_source(tracking_dir / "123.parquet")
+    _write_metadata(metadata_dir, 123)
+
+    cfg = load_runtime_storage_config(config_path)
+    assert cfg.warehouse_sort_columns == (
+        "opta_match_id",
+        "period",
+        "team",
+        "frame_id",
+        "player_id",
+    )
+
+    df = TrackingPipeline(
+        storage="local",
+        model="normalized",
+        config_path=config_path,
+    ).run("123", save=False)
+
+    assert df.columns == [
+        "opta_match_id",
+        "team",
+        "period",
+        "frame_id",
+        "game_clock",
+        "wall_clock",
+        "live",
+        "last_touch",
+        "opta_player_id",
+        "player_id",
+        "player_number",
+        "player_x",
+        "player_y",
+        "player_z",
+        "player_speed",
+        "ball_x",
+        "ball_y",
+        "ball_z",
+        "ball_speed",
+        "pitch_length",
+        "pitch_width",
+    ]
+    assert "event_type" not in df.columns
+    assert "frame_bucket" not in df.columns
+    assert "player_ball_distance" not in df.columns
+    assert "has_ball_possession" not in df.columns
+    assert "player_speed_band" not in df.columns
+    assert "pitch_zone" not in df.columns
+    assert "ball_zone" not in df.columns
+    assert "min_split" not in df.columns
 
 
 def test_pipeline_requires_five_consecutive_close_frames_for_possession(tmp_path: Path) -> None:

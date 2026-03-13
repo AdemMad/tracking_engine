@@ -3,10 +3,12 @@ settings:
   save: true
   output_name: tracking_compacted
   frame_bucket_size: 500
+
   ball_possession:
     column_name: has_ball_possession
     distance_m: 1.5
     min_frames: 1
+
   speed_bands:
     column_name: player_speed_band
     standing_max_m_s: 0.2               # <= 0.2
@@ -14,6 +16,17 @@ settings:
     jogging_max_m_s: 4.0
     running_max_m_s: 5.5
     high_speed_running_max_m_s: 7.0     # <= 7.0
+
+  derived_columns:
+    pitch_zone: true
+    ball_zone: true
+    frame_bucket: true
+    min_split: false
+    player_ball_distance: true
+    has_ball_possession: false
+    player_speed_band: false
+    event_type: false
+
   patterns:
     column_name: event_type
     closest_frame: 0.85                  # fallback max touch distance when no event-specific band is set
@@ -24,8 +37,10 @@ settings:
       start_distance_max: 0.85
       leaving_distance: 1.5
       min_speed: 5.2
+
   player_ball_distance:
     column_name: player_ball_distance
+    
   zones:
     pitch_zone_column: pitch_zone
     ball_zone_column: ball_zone

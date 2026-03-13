@@ -158,6 +158,13 @@ def add_storage_layout_columns(
     possession_run_length_column = "__ball_possession_run_length"
     row_number_column = "__row_nr"
     run_group_columns = ["opta_match_id", "period", "team", "__player_identity"]
+    needs_player_ball_distance = any(
+        [
+            cfg.derived_columns.player_ball_distance,
+            cfg.derived_columns.has_ball_possession,
+            cfg.derived_columns.event_type,
+        ]
+    )
     speed_band_expr = (
         pl.when(pl.col("player_speed").is_null())
         .then(None)
@@ -183,9 +190,6 @@ def add_storage_layout_columns(
         pl.col("period").cast(pl.Int8),
         pl.col("frame_id").cast(pl.Int32),
         pl.col("game_clock").cast(pl.Float32),
-        ((((pl.col("game_clock") / 300.0).floor().cast(pl.Int16)) + 1) * 5)
-        .cast(pl.Int16)
-        .alias("min_split"),
         pl.col("wall_clock").cast(pl.Int64),
         pl.col("opta_player_id").cast(pl.Int64),
         pl.col("player_number").cast(pl.Int16),
@@ -193,7 +197,6 @@ def add_storage_layout_columns(
         pl.col("player_y").cast(pl.Float32),
         pl.col("player_z").cast(pl.Float32),
         pl.col("player_speed").cast(pl.Float32),
-        speed_band_expr.alias(cfg.player_speed_band_column),
         pl.col("ball_x").cast(pl.Float32),
         pl.col("ball_y").cast(pl.Float32),
         pl.col("ball_z").cast(pl.Float32),
@@ -201,13 +204,28 @@ def add_storage_layout_columns(
         pl.col("live").cast(pl.Boolean),
         pl.col("team").cast(pl.Categorical),
         pl.col("last_touch").cast(pl.Categorical),
-        pl.col(cfg.pitch_zone_column).cast(pl.Categorical),
-        pl.col(cfg.ball_zone_column).cast(pl.Categorical),
-        (pl.col("frame_id") // cfg.frame_bucket_size).cast(pl.Int32).alias("frame_bucket"),
-        player_ball_distance_expr.alias(cfg.player_ball_distance_column),
     ]
+    if cfg.derived_columns.min_split:
+        expressions.insert(
+            4,
+            ((((pl.col("game_clock") / 300.0).floor().cast(pl.Int16)) + 1) * 5)
+            .cast(pl.Int16)
+            .alias("min_split"),
+        )
+    if cfg.derived_columns.player_speed_band:
+        expressions.append(speed_band_expr.alias(cfg.player_speed_band_column))
+    if cfg.derived_columns.frame_bucket:
+        expressions.append(
+            (pl.col("frame_id") // cfg.frame_bucket_size).cast(pl.Int32).alias("frame_bucket")
+        )
+    if needs_player_ball_distance:
+        expressions.append(player_ball_distance_expr.alias(cfg.player_ball_distance_column))
 
     schema_names = _schema_names(frame)
+    if cfg.derived_columns.pitch_zone and cfg.pitch_zone_column in schema_names:
+        expressions.append(pl.col(cfg.pitch_zone_column).cast(pl.Categorical))
+    if cfg.derived_columns.ball_zone and cfg.ball_zone_column in schema_names:
+        expressions.append(pl.col(cfg.ball_zone_column).cast(pl.Categorical))
     if "pitch_length" in schema_names:
         expressions.append(pl.col("pitch_length").cast(pl.Float32))
     if "pitch_width" in schema_names:
@@ -222,60 +240,62 @@ def add_storage_layout_columns(
         expressions.append(pl.col("player_position").cast(pl.Categorical))
 
     frame = frame.with_columns(expressions)
-    frame = frame.with_columns(_event_type_expr(cfg, run_group_columns))
-    frame = frame.with_columns(
-        pl.col(cfg.player_ball_distance_column)
-        .le(cfg.ball_possession_distance_m)
-        .alias(possession_candidate_column)
-    )
+    if cfg.derived_columns.event_type:
+        frame = frame.with_columns(_event_type_expr(cfg, run_group_columns))
 
-    group_changed_expr = pl.any_horizontal(
-        *[(pl.col(column) != pl.col(column).shift(1)).fill_null(True) for column in run_group_columns]
-    )
-    frame_gap_expr = (pl.col("frame_id") - pl.col("frame_id").shift(1)).fill_null(1)
-    possession_run_start_expr = (
-        group_changed_expr
-        | pl.col(possession_candidate_column).shift(1).not_().fill_null(True)
-        | frame_gap_expr.ne(1)
-    )
-
-    frame = frame.with_columns(
-        pl.when(pl.col(possession_candidate_column))
-        .then(
-            pl.when(possession_run_start_expr)
-            .then(1)
-            .otherwise(0)
-            .cum_sum()
+    if cfg.derived_columns.has_ball_possession:
+        frame = frame.with_columns(
+            pl.col(cfg.player_ball_distance_column)
+            .le(cfg.ball_possession_distance_m)
+            .alias(possession_candidate_column)
         )
-        .otherwise(None)
-        .alias(possession_run_id_column)
-    )
-    frame = frame.with_columns(
-        pl.when(pl.col(possession_candidate_column))
-        .then(pl.len().over(possession_run_id_column))
-        .otherwise(0)
-        .cast(pl.Int16)
-        .alias(possession_run_length_column)
-    )
-    frame = frame.with_columns(
-        (
-            pl.col(possession_candidate_column)
-            & pl.col(possession_run_length_column).ge(cfg.ball_possession_min_frames)
-        ).alias(cfg.has_ball_possession_column)
-    )
 
-    return (
-        frame.sort(row_number_column)
-        .drop(
+        group_changed_expr = pl.any_horizontal(
+            *[(pl.col(column) != pl.col(column).shift(1)).fill_null(True) for column in run_group_columns]
+        )
+        frame_gap_expr = (pl.col("frame_id") - pl.col("frame_id").shift(1)).fill_null(1)
+        possession_run_start_expr = (
+            group_changed_expr
+            | pl.col(possession_candidate_column).shift(1).not_().fill_null(True)
+            | frame_gap_expr.ne(1)
+        )
+
+        frame = frame.with_columns(
+            pl.when(pl.col(possession_candidate_column))
+            .then(
+                pl.when(possession_run_start_expr)
+                .then(1)
+                .otherwise(0)
+                .cum_sum()
+            )
+            .otherwise(None)
+            .alias(possession_run_id_column)
+        )
+        frame = frame.with_columns(
+            pl.when(pl.col(possession_candidate_column))
+            .then(pl.len().over(possession_run_id_column))
+            .otherwise(0)
+            .cast(pl.Int16)
+            .alias(possession_run_length_column)
+        )
+        frame = frame.with_columns(
+            (
+                pl.col(possession_candidate_column)
+                & pl.col(possession_run_length_column).ge(cfg.ball_possession_min_frames)
+            ).alias(cfg.has_ball_possession_column)
+        )
+
+    drop_columns = [row_number_column, "__player_identity"]
+    if cfg.derived_columns.has_ball_possession:
+        drop_columns.extend(
             [
-                row_number_column,
-                "__player_identity",
                 possession_candidate_column,
                 possession_run_id_column,
                 possession_run_length_column,
             ]
         )
-    )
+
+    return frame.sort(row_number_column).drop(drop_columns)
 
 
 def select_output_columns(
