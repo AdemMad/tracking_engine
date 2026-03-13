@@ -1,0 +1,7 @@
+data/
+replays/
+tracking_engine.egg-info/
+__pycache__/
+.pytest_cache/
+.ipynb_checkpoints/
+*.py[cod]

@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tracking-engine"
+version = "0.5.1"
+description = "Warehouse-first football tracking pipeline - JSONL to Parquet for Snowflake and Databricks"
+requires-python = ">=3.11"
+authors = [
+    {name = "Adem Madoun"},
+    {name = "Codex"},
+]
+urls = {Repository = "https://github.com/AdemMad/tracking_engine"}
+dependencies = [
+    "duckdb>=1.0.0",
+    "polars>=0.20.0",
+    "PyYAML>=6.0.0",
+    "fsspec>=2024.0.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "jupyter"]
+cloud = ["s3fs>=2024.0.0", "adlfs>=2024.0.0"]
+viz = ["matplotlib>=3.8.0", "pillow>=10.0.0"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["tracking_engine*"]
