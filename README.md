@@ -5,10 +5,9 @@ It converts raw Second Spectrum JSONL files into compact Parquet designed for fa
 
 The project computes football-analysis features such as:
 
-- `is_high_intensity`
 - `is_sprint`
 - `is_pressing`
-- `player_distance`
+- `player_ball_distance`
 - `time_delta`
 - `live_time_delta`
 
