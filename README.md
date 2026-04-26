@@ -3,7 +3,7 @@
 `tracking_engine` is a warehouse-first football tracking pipeline.
 It converts raw Second Spectrum JSONL files into compact Parquet designed for fast ingestion and selective reads in Snowflake and Databricks.
 
-The project intentionally no longer computes football-analysis features such as:
+The project computes football-analysis features such as:
 
 - `is_high_intensity`
 - `is_sprint`
